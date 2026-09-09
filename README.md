@@ -16,6 +16,7 @@ DIF-SEG is a Streamlit-based research prototype for medical image analysis. It c
 - Reusable preprocessing utilities
 - Experimental diffusion-inspired noise augmentation
 - Downloadable predicted segmentation masks
+- Synthetic demo-data generator for pipeline testing
 
 ## Project structure
 
@@ -41,6 +42,10 @@ DIF-SEG/
 │   └── augmentation.py
 ├── evaluation/
 │   └── metrics.py
+├── demo/
+│   ├── __init__.py
+│   ├── README.md
+│   └── generate_demo_data.py
 └── dataset/
     ├── README.md
     └── segmentation_dataset.py
@@ -85,6 +90,16 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Quick pipeline test with synthetic data
+
+The repository includes a synthetic generator for checking the data pipeline without using medical data:
+
+```bash
+python -m demo.generate_demo_data
+```
+
+This creates files under `dataset/demo/`. The generated images are artificial and must not be used to claim medical-model performance.
+
 ## Segmentation dataset
 
 Create paired image and mask folders:
@@ -105,11 +120,7 @@ Image and mask filenames must match. Then train the U-Net:
 python -m segmentation.train
 ```
 
-The best checkpoint is saved locally as:
-
-```text
-models/unet_best.pt
-```
+The best checkpoint is saved locally as `models/unet_best.pt`.
 
 ## Detection dataset
 
@@ -132,20 +143,11 @@ Train the CNN baseline with:
 python -m detection.train
 ```
 
-The best checkpoint is saved locally as:
-
-```text
-models/detection_best.pt
-```
+The best checkpoint is saved locally as `models/detection_best.pt`.
 
 ## Evaluation
 
-For labeled test data, DIF-SEG currently provides:
-
-- Dice coefficient
-- Intersection over Union (IoU)
-
-Additional metrics such as precision, recall, accuracy, and F1-score can be reported when the corresponding test setup is appropriate. Report metrics only from actual predictions and ground-truth labels.
+For labeled test data, DIF-SEG currently provides Dice coefficient and Intersection over Union (IoU). Additional metrics such as precision, recall, accuracy, and F1-score can be reported when the corresponding test setup is appropriate. Report metrics only from actual predictions and ground-truth labels.
 
 ## Diffusion component
 
