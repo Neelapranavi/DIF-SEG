@@ -11,10 +11,12 @@ from evaluation.metrics import dice_score, iou_score
 from segmentation.unet import UNet
 
 IMAGE_SIZE = (256, 256)
+DET_IMAGE_SIZE = (224, 224)
 SEG_WEIGHTS = Path("models/unet_best.pt")
 DET_WEIGHTS = Path("models/detection_best.pt")
 
 st.set_page_config(page_title="DIF-SEG", page_icon="🩺", layout="wide")
+
 
 @st.cache_resource
 def load_segmentation_model():
@@ -23,6 +25,7 @@ def load_segmentation_model():
     model.load_state_dict(torch.load(SEG_WEIGHTS, map_location=device))
     model.eval()
     return model, device
+
 
 @st.cache_resource
 def load_detection_model():
@@ -33,15 +36,18 @@ def load_detection_model():
     return model, device
 
 
-def preprocess(image, size=IMAGE_SIZE):
-    resized = image.convert("L").resize(size, Image.Resampling.BILINEAR)
+def preprocess(image, size=IMAGE_SIZE, grayscale=False):
+    mode = "L" if grayscale else "RGB"
+    resized = image.convert(mode).resize(size, Image.Resampling.BILINEAR)
     array = np.asarray(resized, dtype=np.float32) / 255.0
-    return torch.from_numpy(array)[None, None]
+    if grayscale:
+        return torch.from_numpy(array)[None, None]
+    return torch.from_numpy(array).permute(2, 0, 1)[None]
 
 
 def run_segmentation(image, threshold):
     model, device = load_segmentation_model()
-    tensor = preprocess(image).to(device)
+    tensor = preprocess(image, grayscale=True).to(device)
     with torch.inference_mode():
         probability = torch.sigmoid(model(tensor))[0, 0].cpu()
     mask_array = (probability >= threshold).numpy().astype(np.uint8) * 255
@@ -50,7 +56,7 @@ def run_segmentation(image, threshold):
 
 def run_detection(image):
     model, device = load_detection_model()
-    tensor = preprocess(image, (224, 224)).to(device)
+    tensor = preprocess(image, DET_IMAGE_SIZE, grayscale=False).to(device)
     with torch.inference_mode():
         probabilities = torch.softmax(model(tensor), dim=1)[0].cpu()
     label = "Abnormal" if probabilities[1] >= probabilities[0] else "Normal"
@@ -75,7 +81,7 @@ with st.sidebar:
 uploaded = st.file_uploader("Upload a medical image", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"])
 
 if uploaded:
-    image = Image.open(uploaded).convert("L")
+    image = Image.open(uploaded).convert("RGB")
     st.subheader("Input image")
     st.image(image, width=420)
 
