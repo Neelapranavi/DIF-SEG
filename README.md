@@ -14,7 +14,8 @@ DIF-SEG is a Streamlit-based medical-image analysis project built around a real 
 4. Segments the lesion using a trained U-Net.
 5. Displays the predicted mask and allows it to be downloaded.
 6. Calculates Dice and IoU when a ground-truth mask is supplied.
-7. Provides an experimental diffusion-inspired augmentation component for research comparisons.
+7. Provides classification metrics for held-out evaluation.
+8. Provides an experimental diffusion-inspired augmentation component for research comparisons.
 
 ## Real dataset
 
@@ -34,30 +35,18 @@ DIF-SEG/
 ├── .gitignore
 │
 ├── preprocessing/
-│   ├── __init__.py
-│   └── preprocess.py
-│
 ├── detection/
-│   ├── __init__.py
-│   ├── model.py
-│   └── train.py
-│
 ├── segmentation/
-│   ├── __init__.py
-│   ├── unet.py
-│   └── train.py
-│
 ├── diffusion/
-│   ├── __init__.py
-│   └── augmentation.py
 │
 ├── evaluation/
-│   └── metrics.py
+│   ├── metrics.py
+│   └── classification_metrics.py
 │
 ├── scripts/
-│   ├── __init__.py
 │   ├── download_isic2016.py
-│   └── prepare_isic2016.py
+│   ├── prepare_isic2016.py
+│   └── validate_isic2016.py
 │
 └── dataset/
     ├── README.md
@@ -81,7 +70,7 @@ Windows:
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+.venv\\Scripts\\activate
 ```
 
 Linux/macOS:
@@ -104,9 +93,10 @@ Run:
 ```bash
 python -m scripts.download_isic2016
 python -m scripts.prepare_isic2016
+python -m scripts.validate_isic2016
 ```
 
-The first command downloads the official ISIC 2016 Part 3B training ZIP and ground-truth CSV. The second command extracts and organizes the cases into the folders used by DIF-SEG.
+The first command downloads the official ISIC 2016 Part 3B training ZIP and ground-truth CSV. The second command extracts and organizes the cases into the folders used by DIF-SEG. The third command verifies that images, segmentation masks, and malignancy labels are correctly paired before training.
 
 The prepared dataset is intentionally ignored by Git because it is large and should be obtained directly from the official source.
 
@@ -155,7 +145,17 @@ For segmentation, DIF-SEG currently supports:
 - Dice coefficient
 - Intersection over Union (IoU)
 
-The official ISIC 2016 segmentation documentation also discusses sensitivity, specificity, accuracy, Jaccard, and Dice. The classification task reports sensitivity, specificity, accuracy, and average precision.
+For binary classification, `evaluation/classification_metrics.py` provides:
+
+- Accuracy
+- Precision
+- Sensitivity / Recall
+- Specificity
+- F1-score
+- Average Precision when probabilities are available
+- Confusion-matrix counts
+
+The official ISIC 2016 documentation also discusses sensitivity, specificity, accuracy, Jaccard, Dice, and average precision for its challenge tasks.
 
 ## Diffusion component
 
