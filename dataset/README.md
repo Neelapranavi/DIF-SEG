@@ -1,54 +1,67 @@
-# Dataset
+# Real dataset: ISIC 2016 Part 3B
 
-DIF-SEG uses two optional datasets depending on the experiment.
+DIF-SEG is configured to use a real, publicly documented medical-image benchmark rather than synthetic demo data.
 
-## Segmentation
+The project uses the **ISIC 2016 Part 3B** training set from the International Skin Imaging Collaboration (ISIC). It contains 900 dermoscopic lesion images, paired lesion-segmentation masks, and a 900-row ground-truth CSV labeling each case as `benign` or `malignant`. The ISIC documentation states that the masks were created by expert clinicians and the malignancy labels came from expert consensus and pathology report information.
 
-Place paired image/mask files here:
+Official dataset page: https://challenge.isic-archive.com/data/
+
+## Download and prepare
+
+From the repository root:
+
+```bash
+python -m scripts.download_isic2016
+python -m scripts.prepare_isic2016
+```
+
+The downloader retrieves the official ISIC archive files into `dataset/raw/isic2016/`. The preparation script then creates the folders expected by the training code.
+
+## Resulting structure
 
 ```text
 dataset/
 ├── images/
-│   ├── image_001.png
-│   └── image_002.png
-└── masks/
-    ├── image_001.png
-    └── image_002.png
+│   ├── ISIC_*.jpg
+│   └── ...
+├── masks/
+│   ├── ISIC_*.png
+│   └── ...
+├── detection/
+│   ├── normal/
+│   │   └── ISIC_*.jpg
+│   └── abnormal/
+│       └── ISIC_*.jpg
+└── raw/
+    └── isic2016/
+        ├── ISBI2016_ISIC_Part3B_Training_Data.zip
+        └── ISBI2016_ISIC_Part3B_Training_GroundTruth.csv
 ```
 
-Image and mask filenames must match. Masks should contain background and foreground regions.
+`dataset/raw/`, `dataset/images/`, `dataset/masks/`, and `dataset/detection/` are ignored by Git, so the medical dataset is not committed to the public repository.
 
-Train the U-Net:
+## Train
+
+Segmentation:
 
 ```bash
 python -m segmentation.train
 ```
 
-The best checkpoint is saved locally as `models/unet_best.pt`.
-
-## Detection
-
-For binary abnormality classification:
-
-```text
-dataset/
-└── detection/
-    ├── normal/
-    │   ├── image_001.png
-    │   └── image_002.png
-    └── abnormal/
-        ├── image_003.png
-        └── image_004.png
-```
-
-Train the CNN baseline:
+Detection:
 
 ```bash
 python -m detection.train
 ```
 
-The best checkpoint is saved locally as `models/detection_best.pt`.
+Checkpoints are written locally to `models/` and are also ignored by Git.
 
-## Data safety
+## Evaluation
 
-Use a properly licensed dataset. Do not commit private, identifiable, restricted, or otherwise sensitive medical data to a public repository.
+Use a held-out validation/test split and report metrics from actual predictions. The segmentation module currently provides Dice and IoU. The ISIC 2016 challenge documentation also describes sensitivity, specificity, accuracy, Jaccard, and Dice for lesion segmentation, while the classification task reports sensitivity, specificity, accuracy, and average precision.
+
+## Licensing and citation
+
+Check the current ISIC terms before redistribution or publication. The ISIC 2016 dataset is listed as CC-0 on the official ISIC dataset page.
+
+Do not add private patient data, restricted datasets, or identifiable medical records to this repository.
