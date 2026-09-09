@@ -9,6 +9,8 @@ models/*.pt
 models/*.pth
 dataset/images/
 dataset/masks/
+dataset/detection/
+dataset/raw/
 outputs/
 checkpoints/
 .DS_Store
