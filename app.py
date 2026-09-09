@@ -17,6 +17,8 @@ SEG_WEIGHTS = Path("models/unet_best.pt")
 DET_WEIGHTS = Path("models/detection_best.pt")
 SEG_RESULTS = Path("evaluation_results/segmentation_metrics.json")
 DET_RESULTS = Path("evaluation_results/detection_metrics.json")
+DIFF_RESULTS = Path("evaluation_results/segmentation_diffusion_metrics.json")
+COMPARISON_RESULTS = Path("evaluation_results/segmentation_comparison.json")
 
 st.set_page_config(page_title="DIF-SEG", page_icon="🩺", layout="wide")
 
@@ -131,6 +133,8 @@ if uploaded:
         st.subheader("Held-out evaluation")
         det_metrics = load_metrics(DET_RESULTS)
         seg_metrics = load_metrics(SEG_RESULTS)
+        diff_metrics = load_metrics(DIFF_RESULTS)
+        comparison = load_metrics(COMPARISON_RESULTS)
 
         if det_metrics:
             st.markdown("**Detection results**")
@@ -144,7 +148,7 @@ if uploaded:
             st.info("Detection metrics are not available yet. Run: python -m evaluation.evaluate_detection")
 
         if seg_metrics:
-            st.markdown("**Segmentation results**")
+            st.markdown("**Baseline U-Net results**")
             cols = st.columns(4)
             cols[0].metric("Mean Dice", f"{seg_metrics['mean_dice']:.4f}")
             cols[1].metric("Mean IoU", f"{seg_metrics['mean_iou']:.4f}")
@@ -152,6 +156,23 @@ if uploaded:
             cols[3].metric("IoU std", f"{seg_metrics['std_iou']:.4f}")
         else:
             st.info("Segmentation metrics are not available yet. Run: python -m evaluation.evaluate_segmentation")
+
+        if diff_metrics:
+            st.markdown("**Diffusion-inspired augmentation results**")
+            cols = st.columns(4)
+            cols[0].metric("Mean Dice", f"{diff_metrics['mean_dice']:.4f}")
+            cols[1].metric("Mean IoU", f"{diff_metrics['mean_iou']:.4f}")
+            cols[2].metric("Dice std", f"{diff_metrics['std_dice']:.4f}")
+            cols[3].metric("IoU std", f"{diff_metrics['std_iou']:.4f}")
+
+        if comparison:
+            st.markdown("**Baseline vs diffusion-inspired experiment**")
+            cols = st.columns(2)
+            cols[0].metric("Dice change", f"{comparison['delta_mean_dice']:+.4f}")
+            cols[1].metric("IoU change", f"{comparison['delta_mean_iou']:+.4f}")
+            st.caption("Positive values indicate improvement over the baseline on the same held-out split.")
+        else:
+            st.info("Run the diffusion experiment and comparison after training to populate this section.")
 
         st.divider()
         st.caption("For an individual uploaded image, provide its ground-truth mask to calculate image-level Dice and IoU.")
@@ -167,10 +188,10 @@ if uploaded:
                 c2.metric("IoU", f"{iou_score(pred_array, gt_array):.4f}")
 else:
     st.markdown("### Workflow")
-    st.markdown("**Upload → Detection → Segmentation → Evaluation → Download**")
+    st.markdown("**Upload → Detection → Segmentation → Evaluation → Compare**")
     st.write("Upload a medical image to begin.")
 
 st.divider()
 st.subheader("About DIF-SEG")
-st.write("DIF-SEG is a research project for data-driven medical image analysis, combining binary abnormality detection, U-Net segmentation, evaluation, and an experimental diffusion-based data-enhancement component.")
+st.write("DIF-SEG is a research project for data-driven medical image analysis, combining binary abnormality detection, U-Net segmentation, evaluation, and an experimental diffusion-inspired data-enhancement component.")
 st.caption("Use labeled test data for performance reporting. Predictions from this prototype must not be treated as a medical diagnosis.")
