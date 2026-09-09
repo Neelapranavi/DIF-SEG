@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+import json
 
 import numpy as np
 import streamlit as st
@@ -14,9 +15,10 @@ IMAGE_SIZE = (256, 256)
 DET_IMAGE_SIZE = (224, 224)
 SEG_WEIGHTS = Path("models/unet_best.pt")
 DET_WEIGHTS = Path("models/detection_best.pt")
+SEG_RESULTS = Path("evaluation_results/segmentation_metrics.json")
+DET_RESULTS = Path("evaluation_results/detection_metrics.json")
 
 st.set_page_config(page_title="DIF-SEG", page_icon="🩺", layout="wide")
-
 
 @st.cache_resource
 def load_segmentation_model():
@@ -26,7 +28,6 @@ def load_segmentation_model():
     model.eval()
     return model, device
 
-
 @st.cache_resource
 def load_detection_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -34,7 +35,6 @@ def load_detection_model():
     model.load_state_dict(torch.load(DET_WEIGHTS, map_location=device))
     model.eval()
     return model, device
-
 
 def preprocess(image, size=IMAGE_SIZE, grayscale=False):
     mode = "L" if grayscale else "RGB"
@@ -44,7 +44,6 @@ def preprocess(image, size=IMAGE_SIZE, grayscale=False):
         return torch.from_numpy(array)[None, None]
     return torch.from_numpy(array).permute(2, 0, 1)[None]
 
-
 def run_segmentation(image, threshold):
     model, device = load_segmentation_model()
     tensor = preprocess(image, grayscale=True).to(device)
@@ -52,7 +51,6 @@ def run_segmentation(image, threshold):
         probability = torch.sigmoid(model(tensor))[0, 0].cpu()
     mask_array = (probability >= threshold).numpy().astype(np.uint8) * 255
     return mask_array, probability, device.type
-
 
 def run_detection(image):
     model, device = load_detection_model()
@@ -62,12 +60,18 @@ def run_detection(image):
     label = "Abnormal" if probabilities[1] >= probabilities[0] else "Normal"
     return label, float(probabilities[1]), device.type
 
-
 def png_bytes(image):
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
 
+def load_metrics(path):
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
 
 st.title("DIF-SEG")
 st.caption("Data-Driven Medical Image Detection & Segmentation")
@@ -84,14 +88,12 @@ if uploaded:
     image = Image.open(uploaded).convert("RGB")
     st.subheader("Input image")
     st.image(image, width=420)
-
     detection_tab, segmentation_tab, evaluation_tab = st.tabs(["Detection", "Segmentation", "Evaluation"])
 
     with detection_tab:
         if not DET_WEIGHTS.exists():
             st.warning("Detection model checkpoint not found.")
             st.code("python -m detection.train", language="bash")
-            st.caption("Dataset layout: dataset/detection/normal and dataset/detection/abnormal.")
         else:
             with st.spinner("Running abnormality detection..."):
                 label, abnormal_probability, device = run_detection(image)
@@ -103,7 +105,6 @@ if uploaded:
         if not SEG_WEIGHTS.exists():
             st.warning("U-Net checkpoint not found.")
             st.code("python -m segmentation.train", language="bash")
-            st.caption("Dataset layout: dataset/images and dataset/masks with matching filenames.")
         else:
             with st.spinner("Running U-Net segmentation..."):
                 mask_array, probability, device = run_segmentation(image, threshold)
@@ -118,10 +119,30 @@ if uploaded:
             st.download_button("Download mask", data=png_bytes(mask), file_name="dif_seg_mask.png", mime="image/png")
 
     with evaluation_tab:
-        if not SEG_WEIGHTS.exists():
-            st.info("Train the segmentation model first.")
+        st.subheader("Held-out evaluation")
+        det_metrics = load_metrics(DET_RESULTS)
+        seg_metrics = load_metrics(SEG_RESULTS)
+        if det_metrics:
+            st.markdown("**Detection results**")
+            cols = st.columns(4)
+            cols[0].metric("Accuracy", f"{det_metrics['accuracy']:.4f}")
+            cols[1].metric("Precision", f"{det_metrics['precision']:.4f}")
+            cols[2].metric("Recall", f"{det_metrics['recall_sensitivity']:.4f}")
+            cols[3].metric("F1", f"{det_metrics['f1']:.4f}")
         else:
-            st.caption("Upload a matching ground-truth mask to calculate segmentation metrics.")
+            st.info("Detection evaluation results are not available yet. Run: python -m evaluation.evaluate_detection")
+        if seg_metrics:
+            st.markdown("**Segmentation results**")
+            cols = st.columns(4)
+            cols[0].metric("Mean Dice", f"{seg_metrics['mean_dice']:.4f}")
+            cols[1].metric("Mean IoU", f"{seg_metrics['mean_iou']:.4f}")
+            cols[2].metric("Dice std", f"{seg_metrics['std_dice']:.4f}")
+            cols[3].metric("IoU std", f"{seg_metrics['std_iou']:.4f}")
+        else:
+            st.info("Segmentation evaluation results are not available yet. Run: python -m evaluation.evaluate_segmentation")
+        st.divider()
+        st.caption("Upload a matching ground-truth mask to calculate image-level Dice and IoU.")
+        if SEG_WEIGHTS.exists():
             gt_file = st.file_uploader("Ground-truth mask (optional)", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"], key="evaluation_mask")
             if gt_file:
                 mask_array, _, _ = run_segmentation(image, threshold)
