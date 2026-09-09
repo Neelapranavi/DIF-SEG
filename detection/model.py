@@ -2,9 +2,9 @@ import torch.nn as nn
 
 
 class SimpleCNN(nn.Module):
-    """Small binary image-classification baseline for research experiments."""
+    """Small RGB binary image-classification baseline for research experiments."""
 
-    def __init__(self, in_channels=1, num_classes=2):
+    def __init__(self, in_channels=3, num_classes=2):
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(in_channels, 32, 3, padding=1),
