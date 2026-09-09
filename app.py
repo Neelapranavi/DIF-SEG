@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -43,8 +44,8 @@ def run_segmentation(image, threshold):
     tensor = preprocess(image).to(device)
     with torch.inference_mode():
         probability = torch.sigmoid(model(tensor))[0, 0].cpu()
-    mask = (probability >= threshold).numpy().astype(np.uint8) * 255
-    return mask, probability, device.type
+    mask_array = (probability >= threshold).numpy().astype(np.uint8) * 255
+    return mask_array, probability, device.type
 
 
 def run_detection(image):
@@ -54,6 +55,12 @@ def run_detection(image):
         probabilities = torch.softmax(model(tensor), dim=1)[0].cpu()
     label = "Abnormal" if probabilities[1] >= probabilities[0] else "Normal"
     return label, float(probabilities[1]), device.type
+
+
+def png_bytes(image):
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 st.title("DIF-SEG")
@@ -78,6 +85,7 @@ if uploaded:
         if not DET_WEIGHTS.exists():
             st.warning("Detection model checkpoint not found.")
             st.code("python -m detection.train", language="bash")
+            st.caption("Dataset layout: dataset/detection/normal and dataset/detection/abnormal.")
         else:
             with st.spinner("Running abnormality detection..."):
                 label, abnormal_probability, device = run_detection(image)
@@ -89,6 +97,7 @@ if uploaded:
         if not SEG_WEIGHTS.exists():
             st.warning("U-Net checkpoint not found.")
             st.code("python -m segmentation.train", language="bash")
+            st.caption("Dataset layout: dataset/images and dataset/masks with matching filenames.")
         else:
             with st.spinner("Running U-Net segmentation..."):
                 mask_array, probability, device = run_segmentation(image, threshold)
@@ -100,7 +109,7 @@ if uploaded:
                 st.image(mask, caption="Predicted mask", use_container_width=True)
             st.metric("Mean prediction probability", f"{probability.mean().item():.3f}")
             st.caption(f"Inference device: {device}")
-            st.download_button("Download mask", data=mask_array.tobytes(), file_name="dif_seg_mask.png", mime="image/png")
+            st.download_button("Download mask", data=png_bytes(mask), file_name="dif_seg_mask.png", mime="image/png")
 
     with evaluation_tab:
         if not SEG_WEIGHTS.exists():
