@@ -1,22 +1,28 @@
 # DIF-SEG
 
-**Data-Driven Medical Image Detection and Segmentation**
+**Data-Driven Model for Medical Image Detection and Segmentation**
 
-DIF-SEG is a Streamlit-based research prototype for medical image analysis. It combines binary abnormality detection, U-Net segmentation, segmentation evaluation, reusable preprocessing, and an experimental diffusion-inspired augmentation component.
+DIF-SEG is a Streamlit-based medical-image analysis project built around a real public benchmark rather than synthetic demo data. The current implementation uses the **ISIC 2016 Part 3B** dermoscopic lesion dataset for binary malignancy classification and lesion segmentation.
 
-> **Important:** DIF-SEG is an educational/research decision-support prototype. It is not a medical device and must not be used for clinical diagnosis or treatment decisions.
+> **Research disclaimer:** DIF-SEG is an academic decision-support project. It is not a medical device and must not be used for clinical diagnosis or treatment decisions.
 
-## Features
+## What the project does
 
-- Streamlit web interface
-- Binary normal/abnormal detection baseline
-- U-Net image segmentation
-- Dice and IoU evaluation
-- CPU/GPU inference support
-- Reusable preprocessing utilities
-- Experimental diffusion-inspired noise augmentation
-- Downloadable predicted segmentation masks
-- Synthetic demo-data generator for pipeline testing
+1. Accepts a dermoscopic medical image.
+2. Preprocesses the image for model inference.
+3. Predicts benign vs. malignant using a trained binary classifier.
+4. Segments the lesion using a trained U-Net.
+5. Displays the predicted mask and allows it to be downloaded.
+6. Calculates Dice and IoU when a ground-truth mask is supplied.
+7. Provides an experimental diffusion-inspired augmentation component for research comparisons.
+
+## Real dataset
+
+The project uses the **ISIC 2016 Part 3B** training data from the International Skin Imaging Collaboration. The official ISIC documentation describes 900 dermoscopic lesion images, 900 paired segmentation masks, and 900 ground-truth malignancy labels (`benign` / `malignant`). The segmentation masks were created by expert clinicians, and the malignancy labels were obtained from expert consensus and pathology report information.
+
+The official ISIC dataset page lists the 2016 data as CC-0. Always check the current official terms before redistributing or publishing derived material.
+
+Official source: https://challenge.isic-archive.com/data/
 
 ## Project structure
 
@@ -26,32 +32,39 @@ DIF-SEG/
 ├── requirements.txt
 ├── README.md
 ├── .gitignore
+│
 ├── preprocessing/
 │   ├── __init__.py
 │   └── preprocess.py
+│
 ├── detection/
 │   ├── __init__.py
 │   ├── model.py
 │   └── train.py
+│
 ├── segmentation/
 │   ├── __init__.py
 │   ├── unet.py
 │   └── train.py
+│
 ├── diffusion/
 │   ├── __init__.py
 │   └── augmentation.py
+│
 ├── evaluation/
 │   └── metrics.py
-├── demo/
+│
+├── scripts/
 │   ├── __init__.py
-│   ├── README.md
-│   └── generate_demo_data.py
+│   ├── download_isic2016.py
+│   └── prepare_isic2016.py
+│
 └── dataset/
     ├── README.md
     └── segmentation_dataset.py
 ```
 
-Model checkpoints and real medical datasets are intentionally excluded from Git because model files can be large and datasets may contain sensitive or restricted information.
+Real medical data and trained model checkpoints are intentionally excluded from Git.
 
 ## Setup
 
@@ -84,96 +97,74 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Start Streamlit
+## Download the real medical dataset
+
+Run:
 
 ```bash
-streamlit run app.py
+python -m scripts.download_isic2016
+python -m scripts.prepare_isic2016
 ```
 
-## Quick pipeline test with synthetic data
+The first command downloads the official ISIC 2016 Part 3B training ZIP and ground-truth CSV. The second command extracts and organizes the cases into the folders used by DIF-SEG.
 
-The repository includes a synthetic generator for checking the data pipeline without using medical data:
+The prepared dataset is intentionally ignored by Git because it is large and should be obtained directly from the official source.
 
-```bash
-python -m demo.generate_demo_data
-```
+## Train the real models
 
-This creates files under `dataset/demo/`. The generated images are artificial and must not be used to claim medical-model performance.
-
-## Segmentation dataset
-
-Create paired image and mask folders:
-
-```text
-dataset/
-├── images/
-│   ├── image_001.png
-│   └── image_002.png
-└── masks/
-    ├── image_001.png
-    └── image_002.png
-```
-
-Image and mask filenames must match. Then train the U-Net:
+### Segmentation
 
 ```bash
 python -m segmentation.train
 ```
 
-The best checkpoint is saved locally as `models/unet_best.pt`.
-
-## Detection dataset
-
-For binary detection, organize images as:
+This trains the U-Net using the real ISIC lesion images and expert-created masks. The best checkpoint is saved as:
 
 ```text
-dataset/
-└── detection/
-    ├── normal/
-    │   ├── image_001.png
-    │   └── image_002.png
-    └── abnormal/
-        ├── image_101.png
-        └── image_102.png
+models/unet_best.pt
 ```
 
-Train the CNN baseline with:
+### Detection
 
 ```bash
 python -m detection.train
 ```
 
-The best checkpoint is saved locally as `models/detection_best.pt`.
+This trains the binary classifier using the same real ISIC cases, with `benign` mapped to `normal` and `malignant` mapped to `abnormal`. The best checkpoint is saved as:
+
+```text
+models/detection_best.pt
+```
+
+## Run the application
+
+After both checkpoints exist:
+
+```bash
+streamlit run app.py
+```
+
+Then upload a dermoscopic lesion image and use the Detection, Segmentation, and Evaluation tabs.
 
 ## Evaluation
 
-For labeled test data, DIF-SEG currently provides Dice coefficient and Intersection over Union (IoU). Additional metrics such as precision, recall, accuracy, and F1-score can be reported when the corresponding test setup is appropriate. Report metrics only from actual predictions and ground-truth labels.
+Do not report fabricated performance numbers. Train on a training split, evaluate on held-out data, and record the actual results.
+
+For segmentation, DIF-SEG currently supports:
+
+- Dice coefficient
+- Intersection over Union (IoU)
+
+The official ISIC 2016 segmentation documentation also discusses sensitivity, specificity, accuracy, Jaccard, and Dice. The classification task reports sensitivity, specificity, accuracy, and average precision.
 
 ## Diffusion component
 
-`diffusion/augmentation.py` contains a lightweight **diffusion-inspired Gaussian noise augmentation baseline**. It is intentionally not presented as a trained DDPM or a validated generative diffusion model. It can be used for controlled research experiments comparing training with and without noise augmentation.
+`diffusion/augmentation.py` contains a lightweight **diffusion-inspired Gaussian noise augmentation baseline**. It is not a trained DDPM and should not be presented as a validated generative diffusion model.
 
-## Research workflow
+## Important limitations
 
-```text
-                  Medical Image
-                       │
-                  Preprocessing
-                       │
-             ┌─────────┴─────────┐
-             ▼                   ▼
-        Detection            Segmentation
-       Normal/Abnormal           U-Net
-             │                   │
-             └─────────┬─────────┘
-                       ▼
-                 Evaluation
-                 Dice / IoU
-                       │
-                       ▼
-                Research Analysis
-```
-
-## Data and safety
-
-Use properly licensed datasets. Do not commit private, identifiable, or restricted medical data to a public repository. This project is intended for academic and research use only.
+- The current dataset is dermoscopic skin-lesion imagery, not CT/MRI/X-ray data.
+- A benchmark dataset does not make the model clinically validated.
+- Model performance depends on the training split, preprocessing, hyperparameters, and hardware.
+- External validation on data from another institution is required before any claim of clinical generalization.
+- Never upload identifiable patient data to a public repository or an untrusted deployment.
