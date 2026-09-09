@@ -1,12 +1,15 @@
+from collections import Counter
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset, random_split
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
 
 from detection.model import SimpleCNN
+from evaluation.classification_metrics import classification_report
 
 
 class ClassificationDataset(Dataset):
@@ -15,7 +18,6 @@ class ClassificationDataset(Dataset):
     def __init__(self, root="dataset/detection", size=224):
         self.root = Path(root)
         self.transform = transforms.Compose([
-            transforms.Grayscale(num_output_channels=1),
             transforms.Resize((size, size)),
             transforms.ToTensor(),
         ])
@@ -33,46 +35,64 @@ class ClassificationDataset(Dataset):
 
     def __getitem__(self, index):
         path, label = self.samples[index]
-        return self.transform(Image.open(path)), label
+        return self.transform(Image.open(path).convert("RGB")), label
 
 
 def train(root="dataset/detection", epochs=10, batch_size=8, learning_rate=1e-3):
     dataset = ClassificationDataset(root)
-    n_val = max(1, int(len(dataset) * 0.2))
-    n_train = len(dataset) - n_val
-    if n_train < 1:
-        raise ValueError("Detection dataset needs at least two images.")
-    train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(42))
+    labels = [label for _, label in dataset.samples]
+    if len(set(labels)) < 2:
+        raise ValueError("Detection training requires both normal and abnormal classes.")
+
+    indices = list(range(len(dataset)))
+    train_indices, val_indices = train_test_split(
+        indices, test_size=0.2, random_state=42, stratify=labels
+    )
+    train_set, val_set = Subset(dataset, train_indices), Subset(dataset, val_indices)
+
+    counts = Counter(labels[i] for i in train_indices)
+    class_weights = torch.tensor(
+        [len(train_indices) / (2 * counts.get(i, 1)) for i in range(2)],
+        dtype=torch.float32,
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = SimpleCNN().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size)
-    best = 0.0
+    best_f1 = -1.0
     Path("models").mkdir(exist_ok=True)
 
     for epoch in range(1, epochs + 1):
         model.train()
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
+        for images, labels_batch in train_loader:
+            images, labels_batch = images.to(device), labels_batch.to(device)
             optimizer.zero_grad()
-            loss = criterion(model(images), labels)
+            loss = criterion(model(images), labels_batch)
             loss.backward()
             optimizer.step()
 
         model.eval()
-        correct = total = 0
+        y_true, y_pred, y_probability = [], [], []
         with torch.inference_mode():
-            for images, labels in val_loader:
-                predictions = model(images.to(device)).argmax(1).cpu()
-                correct += (predictions == labels).sum().item()
-                total += labels.numel()
-        accuracy = correct / total
-        print(f"Epoch {epoch:03d}/{epochs} | val_accuracy={accuracy:.4f}")
-        if accuracy >= best:
-            best = accuracy
+            for images, labels_batch in val_loader:
+                probabilities = torch.softmax(model(images.to(device)), dim=1).cpu()
+                predictions = probabilities.argmax(1)
+                y_true.extend(labels_batch.tolist())
+                y_pred.extend(predictions.tolist())
+                y_probability.extend(probabilities[:, 1].tolist())
+
+        metrics = classification_report(y_true, y_pred, y_probability)
+        print(
+            f"Epoch {epoch:03d}/{epochs} | "
+            f"val_accuracy={metrics['accuracy']:.4f} | "
+            f"val_f1={metrics['f1']:.4f} | "
+            f"val_recall={metrics['recall_sensitivity']:.4f}"
+        )
+        if metrics["f1"] >= best_f1:
+            best_f1 = metrics["f1"]
             torch.save(model.state_dict(), "models/detection_best.pt")
 
 
