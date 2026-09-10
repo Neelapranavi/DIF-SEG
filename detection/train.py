@@ -15,7 +15,7 @@ from evaluation.classification_metrics import classification_report
 class ClassificationDataset(Dataset):
     """Folder dataset: root/normal and root/abnormal."""
 
-    def __init__(self, root="dataset/detection", size=224):
+    def __init__(self, root="dataset/detection", size=128):
         self.root = Path(root)
         self.transform = transforms.Compose([
             transforms.Resize((size, size)),
@@ -38,8 +38,9 @@ class ClassificationDataset(Dataset):
         return self.transform(Image.open(path).convert("RGB")), label
 
 
-def train(root="dataset/detection", epochs=10, batch_size=8, learning_rate=1e-3):
-    dataset = ClassificationDataset(root)
+def train(root="dataset/detection", epochs=5, batch_size=16, learning_rate=1e-3):
+    """CPU-friendly detection training for the 900-image ISIC dataset."""
+    dataset = ClassificationDataset(root, size=128)
     labels = [label for _, label in dataset.samples]
     if len(set(labels)) < 2:
         raise ValueError("Detection training requires both normal and abnormal classes.")
@@ -57,22 +58,28 @@ def train(root="dataset/detection", epochs=10, batch_size=8, learning_rate=1e-3)
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Training device: {device}")
+    print(f"Training samples: {len(train_set)} | Validation samples: {len(val_set)}")
+    print("CPU-friendly mode: 128x128 images, 5 epochs")
+
     model = SimpleCNN().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=0)
     best_f1 = -1.0
     Path("models").mkdir(exist_ok=True)
 
     for epoch in range(1, epochs + 1):
         model.train()
+        running_loss = 0.0
         for images, labels_batch in train_loader:
             images, labels_batch = images.to(device), labels_batch.to(device)
             optimizer.zero_grad()
             loss = criterion(model(images), labels_batch)
             loss.backward()
             optimizer.step()
+            running_loss += loss.item()
 
         model.eval()
         y_true, y_pred, y_probability = [], [], []
@@ -85,8 +92,9 @@ def train(root="dataset/detection", epochs=10, batch_size=8, learning_rate=1e-3)
                 y_probability.extend(probabilities[:, 1].tolist())
 
         metrics = classification_report(y_true, y_pred, y_probability)
+        avg_loss = running_loss / max(1, len(train_loader))
         print(
-            f"Epoch {epoch:03d}/{epochs} | "
+            f"Epoch {epoch:02d}/{epochs} | loss={avg_loss:.4f} | "
             f"val_accuracy={metrics['accuracy']:.4f} | "
             f"val_f1={metrics['f1']:.4f} | "
             f"val_recall={metrics['recall_sensitivity']:.4f}"
@@ -94,6 +102,8 @@ def train(root="dataset/detection", epochs=10, batch_size=8, learning_rate=1e-3)
         if metrics["f1"] >= best_f1:
             best_f1 = metrics["f1"]
             torch.save(model.state_dict(), "models/detection_best.pt")
+
+    print("Detection training complete: models/detection_best.pt")
 
 
 if __name__ == "__main__":
